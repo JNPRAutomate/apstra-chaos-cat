@@ -2,6 +2,24 @@
 
 apstraserver="127.0.0.1"
 apstrapass="admin"
+ifprefix=xe
+while getopts ":i:p:h" option; do
+  case $option in
+    i)
+      ifprefix="$OPTARG"
+      ;;
+    p)
+      apstrapass="$OPTARG"
+      ;;
+    *)
+      echo "Usage: [chaoscat -i interface_name (eg: xe lt ge) -p Apstra_password]"
+      exit 1
+      ;;
+  esac
+done
+
+
+echo "Interface uses $ifprefix"
 authtoken=`curl -s -k --location --request POST "https://$apstraserver/api/user/login" --header 'Content-Type: application/json' --data-raw "{
   \"username\": \"admin\",
   \"password\": \"$apstrapass\"
@@ -73,7 +91,7 @@ curl -s -k --location --request PATCH "https://$apstraserver/api/blueprints/$bpi
           {
             \"interface\": {
               \"id\": \"$intf1id\",
-              \"if_name\": \"xe-0/0/5\"
+              \"if_name\": \"$ifprefix-0/0/5\"
             }
           },
           {
@@ -91,7 +109,7 @@ sleep 2
 
 disableint() {
 getswitchinfo
-( echo 'conf';echo 'set int xe-0/0/01 disable';echo 'commit and-quit' ) | sshpass -proot123 ssh -o StrictHostKeyChecking=no root@"$switch_ip" "cli"
+( echo 'conf';echo 'set int $ifprefix-0/0/01 disable';echo 'commit and-quit' ) | sshpass -proot123 ssh -o StrictHostKeyChecking=no root@"$switch_ip" "cli"
 sleep 2
 }
 changeswasn() {
@@ -128,7 +146,7 @@ getswitchinfo
 flapif() {
 getswitchinfo
 echo "NB: This is a pretty bad hack, and will continue rapidly flapping the interface until you hit Control-C.  Please also be advised that it might leave the IF in a down state when you do stop it. If that happens either reboot the switch, or login and kill flap.sh (ps aux | grep flap.sh, and kill the PID)"
- (echo 'echo "while true;do ifconfig xe-0/0/0 down;ifconfig xe-0/0/0 up; done"> flap.sh';echo 'sh ./flap.sh') | sshpass -proot123 ssh -o StrictHostKeyChecking=no root@$switch_ip sh
+ (echo 'echo "while true;do ifconfig $ifprefix-0/0/0 down;ifconfig $ifprefix-0/0/0 up; done"> flap.sh';echo 'sh ./flap.sh') | sshpass -proot123 ssh -o StrictHostKeyChecking=no root@$switch_ip sh
 }
 rampcpu() {
 getswitchinfo
@@ -155,11 +173,11 @@ items=(  1 "Save Current Blueprint Version"
          2 "Commit Apstra Blueprint"
 	 3 "Break Cabling Map"
          4 "Change Blueprint Name"
-	 5 "Disable switch Interface xe-0/0/1"
+	 5 "Disable switch Interface $ifprefix-0/0/1"
 	 6 "Change the ASN of a device"
 	 7 "Add a static route to a device"
          8 "Ramp a device CPU to raise device Health anomaly"
-         9 "Flap xe-0/0/0 on selected device"
+         9 "Flap $ifprefix-0/0/0 on selected device"
 	10 "reboot all junos devices under Apstra management"
        )
 
