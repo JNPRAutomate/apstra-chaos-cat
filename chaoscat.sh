@@ -1,10 +1,14 @@
 #!/bin/bash
 
 apstraserver="127.0.0.1"
-apstrapass="admin"
-ifprefix=xe
-while getopts ":i:p:h" option; do
+apstrapass="AdminPasswordGoesHere"
+ifprefix=ge
+delay=0.5
+while getopts ":s:i:p:h" option; do
   case $option in
+    s)
+      apstraserver="$OPTARG"
+      ;;
     i)
       ifprefix="$OPTARG"
       ;;
@@ -12,7 +16,7 @@ while getopts ":i:p:h" option; do
       apstrapass="$OPTARG"
       ;;
     *)
-      echo "Usage: [chaoscat -i interface_name (eg: xe lt ge) -p Apstra_password]"
+      echo "Usage: [chaoscat -s server_name/ip -i interface_name (eg: xe lt ge) -p Apstra_password]"
       exit 1
       ;;
   esac
@@ -69,17 +73,34 @@ do
 done
 }
 
-
-
-
 breakcablemap() {
 
-endpoints=`curl -s -k --location --request GET "https://$apstraserver/api/blueprints/$bpid/experience/web/cabling-map" --header "AUTHTOKEN: $authtoken" --data-raw "" | jq '.links[] | select(.label == "spine1<->evpn_esi_001_leaf2[1]") | {endpoints}'`
+link1_endpoints=`curl -s -k --location --request GET "https://$apstraserver/api/blueprints/$bpid/experience/web/cabling-map" --header "AUTHTOKEN: $authtoken" --data-raw "" | jq '.links[] | select(.label == "spine1<->evpn_esi_001_leaf2[1]") | {endpoints}'`
+link2_endpoints=`curl -s -k --location --request GET "https://$apstraserver/api/blueprints/$bpid/experience/web/cabling-map" --header "AUTHTOKEN: $authtoken" --data-raw "" | jq '.links[] | select(.label == "spine2<->evpn_esi_001_leaf2[1]") | {endpoints}'`
 
-intf1id=`echo $endpoints | jq --raw-output '.endpoints[0] .interface.id'`
-intf2id=`echo $endpoints | jq --raw-output '.endpoints[1] .interface.id'`
-echo $intf1id
-echo $intf2id
+if [ $(echo $link1_endpoints | jq --raw-output '.endpoints[0].system.label') = 'spine1' ]; then
+    link1_spineid=`echo $link1_endpoints | jq --raw-output '.endpoints[0].interface.id'`
+    link1_spine_ifname=`echo $link1_endpoints | jq --raw-output '.endpoints[0].interface.if_name'`
+    link1_leafid=`echo $link1_endpoints | jq --raw-output '.endpoints[1].interface.id'`
+    link1_leaf_ifname=`echo $link1_endpoints | jq --raw-output '.endpoints[1].interface.if_name'`
+else 
+    link1_spineid=`echo $link1_endpoints | jq --raw-output '.endpoints[1].interface.id'`
+    link1_spine_ifname=`echo $link1_endpoints | jq --raw-output '.endpoints[1].interface.if_name'`
+    link1_leafid=`echo $link1_endpoints | jq --raw-output '.endpoints[0].interface.id'`
+    link1_leaf_ifname=`echo $link1_endpoints | jq --raw-output '.endpoints[0].interface.if_name'`
+fi 
+
+if [ $(echo $link2_endpoints | jq --raw-output '.endpoints[0].system.label') = 'spine2' ]; then
+    link2_spineid=`echo $link2_endpoints | jq --raw-output '.endpoints[0].interface.id'`
+    link2_spine_ifname=`echo $link2_endpoints | jq --raw-output '.endpoints[0].interface.if_name'`
+    link2_leafid=`echo $link2_endpoints | jq --raw-output '.endpoints[1].interface.id'`
+    link2_leaf_ifname=`echo $link2_endpoints | jq --raw-output '.endpoints[1].interface.if_name'`
+else 
+    link2_spineid=`echo $link2_endpoints | jq --raw-output '.endpoints[1].interface.id'`
+    link2_spine_ifname=`echo $link2_endpoints | jq --raw-output '.endpoints[1].interface.if_name'`
+    link2_leafid=`echo $link2_endpoints | jq --raw-output '.endpoints[0].interface.id'`
+    link2_leaf_ifname=`echo $link2_endpoints | jq --raw-output '.endpoints[0].interface.if_name'`
+fi 
 
 curl -s -k --location --request PATCH "https://$apstraserver/api/blueprints/$bpid/cabling-map" \
 --header "AUTHTOKEN: $authtoken" \
@@ -90,26 +111,51 @@ curl -s -k --location --request PATCH "https://$apstraserver/api/blueprints/$bpi
         \"endpoints\": [
           {
             \"interface\": {
-              \"id\": \"$intf1id\",
-              \"if_name\": \"$ifprefix-0/0/5\"
+              \"id\": \"$link1_leafid\",
+              \"if_name\": \"$link2_leaf_ifname\"
             }
           },
           {
             \"interface\": {
-              \"id\": \"$intf2id\"
+              \"id\": \"$link1_spineid\",
+              \"if_name\": \"$link1_spine_ifname\"
+
             }
           }
         ],
         \"id\": \"spine1<->evpn_esi_001_leaf2[1]\"
+      },
+      {
+        \"endpoints\": [
+          {
+            \"interface\": {
+              \"id\": \"$link2_leafid\",
+              \"if_name\": \"$link1_leaf_ifname\"
+            }
+          },
+          {
+            \"interface\": {
+              \"id\": \"$link2_spineid\",
+              \"if_name\": \"$link2_spine_ifname\"
+
+            }
+          }
+        ],
+        \"id\": \"spine2<->evpn_esi_001_leaf2[1]\"
       }
     ]
   }"
-sleep 2
+
+for (( i = 5 ; i > 0 ; i-- )); do
+    echo -n -e "\r\e[0KCommitting change in $i seconds..."
+    sleep 1
+done
+commitcurrent
 }
 
 disableint() {
 getswitchinfo
-( echo 'conf';echo 'set int $ifprefix-0/0/01 disable';echo 'commit and-quit' ) | sshpass -proot123 ssh -o StrictHostKeyChecking=no root@"$switch_ip" "cli"
+( echo 'conf';echo "set int $ifprefix-0/0/1 disable";echo 'commit and-quit' ) | sshpass -proot123 ssh -o StrictHostKeyChecking=no root@"$switch_ip" "cli"
 sleep 2
 }
 changeswasn() {
@@ -146,12 +192,12 @@ getswitchinfo
 flapif() {
 getswitchinfo
 echo "NB: This is a pretty bad hack, and will continue rapidly flapping the interface until you hit Control-C.  Please also be advised that it might leave the IF in a down state when you do stop it. If that happens either reboot the switch, or login and kill flap.sh (ps aux | grep flap.sh, and kill the PID)"
- (echo 'echo "while true;do ifconfig $ifprefix-0/0/0 down;ifconfig $ifprefix-0/0/0 up; done"> flap.sh';echo 'sh ./flap.sh') | sshpass -proot123 ssh -o StrictHostKeyChecking=no root@$switch_ip sh
+ (echo "echo \"while true; do ifconfig $ifprefix-0/0/0 down; sleep $delay; ifconfig $ifprefix-0/0/0 up; sleep $delay; done\"> flap.sh"; echo "sh ./flap.sh") | sshpass -proot123 ssh -o StrictHostKeyChecking=no root@$switch_ip sh
 }
 rampcpu() {
 getswitchinfo
 echo "NB: This is a pretty bad hack, but should peg the cpu @100% on a vQFX. Hit ^C (Control-C) to stop the pain. Make certain that the Device System Health probe is enabled, and note also that it will take 6 minutes and 1 second to raise an anomaly"
-sshpass -proot123 ssh -o StrictHostKeyChecking=no root@$switch_ip 'dd if=/dev/zero of=/dev/null'
+sshpass -proot123 ssh -o StrictHostKeyChecking=no root@$switch_ip 'dd if=/dev/zero of=/dev/null ; dd if=/dev/random of=/dev/null ; dd if=/dev/urandom of=/dev/null'
 }
 
 rebootall() {
