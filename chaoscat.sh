@@ -127,34 +127,35 @@ get_auth_token () {
 }
 
 get_bp_id() { 
-  bp_label_list=`curl -s -k --location --request GET "https://$apstraserver/api/blueprints/" \
-    --header "AUTHTOKEN: $authtoken" --header "Content-Type: application/json" \
-    | jq -r '.items[].id' | tr '\n' ' ' `
-  
-  declare -a blueprints
-  for bp in $bp_label_list; do
-    blueprints+=($bp)
-  done
-
-  MENU_OPTIONS=
-  COUNT=0
-  PS3="Please enter your choice (q to quit): "
-  select target in "${blueprints[@]}" "quit"; do
-    case "$target" in 
-      "quit")
-        echo "Exited"
-        break
-        ;;
-      *)
-        bp_label=$target
-        bpid=`curl -s -k --location --request GET "https://$apstraserver/api/blueprints" \
-          --header "AUTHTOKEN: $authtoken" --data-raw "" | \
-          jq -r '.items[] | select(.id == '\"$bp_label\"') | .id' `
-        echo "ID for $bp_label is $bpid"
-        break
-        ;;
-    esac
-  done
+  #bp_label_list=`curl -s -k --location --request GET "https://$apstraserver/api/blueprints/" \
+  #  --header "AUTHTOKEN: $authtoken" --header "Content-Type: application/json" \
+  #  | jq -r '.items[].id' | tr '\n' ' ' `
+  #
+  #declare -a blueprints
+  #for bp in $bp_label_list; do
+  #  blueprints+=($bp)
+  #done
+  #
+  #MENU_OPTIONS=
+  #COUNT=0
+  #PS3="Please enter your choice (q to quit): "
+  #select target in "${blueprints[@]}" "quit"; do
+  #  case "$target" in 
+  #    "quit")
+  #      echo "Exited"
+  #      break
+  #      ;;
+  #    *)
+  #      bp_label=$target
+  #      bpid=`curl -s -k --location --request GET "https://$apstraserver/api/blueprints" \
+  #        --header "AUTHTOKEN: $authtoken" --data-raw "" | \
+  #        jq -r '.items[] | select(.id == '\"$bp_label\"') | .id' `
+  #      echo "ID for $bp_label is $bpid"
+  #      break
+  #      ;;
+  #  esac
+  #done
+  bpid="evpn-vex-virtual"
 
 }
 
