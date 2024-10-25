@@ -149,7 +149,7 @@ get_bp_id() {
         bp_label=$target
         bpid=`curl -s -k --location --request GET "https://$apstraserver/api/blueprints" \
           --header "AUTHTOKEN: $authtoken" --data-raw "" | \
-          jq -r '.items[] | select(.label == '\"$bp_label\"') | .id' `
+          jq -r '.items[] | select(.id == '\"$bp_label\"') | .id' `
         echo "ID for $bp_label is $bpid"
         break
         ;;
