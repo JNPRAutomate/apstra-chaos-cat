@@ -129,7 +129,7 @@ get_auth_token () {
 get_bp_id() { 
   bp_label_list=`curl -s -k --location --request GET "https://$apstraserver/api/blueprints/" \
     --header "AUTHTOKEN: $authtoken" --header "Content-Type: application/json" \
-    | jq -r '.items[].label' | tr '\n' ' ' `
+    | jq -r '.items[].id' | tr '\n' ' ' `
   
   declare -a blueprints
   for bp in $bp_label_list; do
