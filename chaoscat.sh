@@ -5,6 +5,7 @@ apstrapass=""
 ifprefix=""
 delay=0.5
 
+bpid=""
 bp_label=""
 
 ###
@@ -12,6 +13,10 @@ bp_label=""
 ###
 
 breakcablemap() {
+  if [ -z $bpid ]; then
+    get_bp_id
+  fi
+
   link1_endpoints=`curl -s -k --location --request GET "https://$apstraserver/api/blueprints/$bpid/experience/web/cabling-map" --header "AUTHTOKEN: $authtoken" --data-raw "" | jq '.links[] | select(.label == "spine1<->evpn_esi_001_leaf2[1]") | {endpoints}'`
   link2_endpoints=`curl -s -k --location --request GET "https://$apstraserver/api/blueprints/$bpid/experience/web/cabling-map" --header "AUTHTOKEN: $authtoken" --data-raw "" | jq '.links[] | select(.label == "spine2<->evpn_esi_001_leaf2[1]") | {endpoints}'`
 
@@ -88,14 +93,20 @@ breakcablemap() {
   commitcurrent
 }
 
+
 changeswasn() {
   getswitchinfo
   ( echo 'conf';echo 'set routing-options autonomous-system 645135';echo 'commit and-quit' ) | sshpass -proot123 ssh -o StrictHostKeyChecking=no root@"$switch_ip" "cli"
   sleep 2
 }
 
+
 commitcurrent() {
-  commitversion=`curl -s -k --location --request GET "https://$apstraserver/api/blueprints/$bpid/deploy" --header "AUTHTOKEN: $authtoken" | jq '.version'  --raw-output`
+  if [ -z $bpid ]; then
+    get_bp_id
+  fi
+
+  commitversion=`curl -s -k --location --request GET "https://$apstraserver/api/blueprints/$bpid" --header "AUTHTOKEN: $authtoken" | jq '.version'  --raw-output`
   echo "version is $commitversion"
   curl -k --location -g --request PUT "https://$apstraserver/api/blueprints/$bpid/deploy" \
     --header "AUTHTOKEN: $authtoken" \
@@ -106,17 +117,20 @@ commitcurrent() {
   }"
 }
 
+
 disableint() {
   getswitchinfo
   ( echo 'conf';echo "set int $ifprefix-0/0/1 disable";echo 'commit and-quit' ) | sshpass -proot123 ssh -o StrictHostKeyChecking=no root@"$switch_ip" "cli"
   sleep 2
 }
 
+
 flapif() {
   getswitchinfo
   echo "NB: This is a pretty bad hack, and will continue rapidly flapping the interface until you hit Control-C.  Please also be advised that it might leave the IF in a down state when you do stop it. If that happens either reboot the switch, or login and kill flap.sh (ps aux | grep flap.sh, and kill the PID)"
   (echo "echo \"while true; do ifconfig $ifprefix-0/0/0 down; sleep $delay; ifconfig $ifprefix-0/0/0 up; sleep $delay; done\"> flap.sh"; echo "sh ./flap.sh") | sshpass -proot123 ssh -o StrictHostKeyChecking=no root@$switch_ip sh
 }
+
 
 get_auth_token () {
   authtoken=`curl -s -k --location --request POST "https://$apstraserver/api/user/login" --header 'Content-Type: application/json' --data-raw "{
@@ -126,47 +140,49 @@ get_auth_token () {
   echo "authtoken is $authtoken"
 }
 
-get_bp_id() { 
-  #bp_label_list=`curl -s -k --location --request GET "https://$apstraserver/api/blueprints/" \
-  #  --header "AUTHTOKEN: $authtoken" --header "Content-Type: application/json" \
-  #  | jq -r '.items[].id' | tr '\n' ' ' `
-  #
-  #declare -a blueprints
-  #for bp in $bp_label_list; do
-  #  blueprints+=($bp)
-  #done
-  #
-  #MENU_OPTIONS=
-  #COUNT=0
-  #PS3="Please enter your choice (q to quit): "
-  #select target in "${blueprints[@]}" "quit"; do
-  #  case "$target" in 
-  #    "quit")
-  #      echo "Exited"
-  #      break
-  #      ;;
-  #    *)
-  #      bp_label=$target
-  #      bpid=`curl -s -k --location --request GET "https://$apstraserver/api/blueprints" \
-  #        --header "AUTHTOKEN: $authtoken" --data-raw "" | \
-  #        jq -r '.items[] | select(.id == '\"$bp_label\"') | .id' `
-  #      echo "ID for $bp_label is $bpid"
-  #      break
-  #      ;;
-  #  esac
-  #done
-  bpid="evpn-vex-virtual"
 
+get_bp_id() { 
+  bp_label_list=`curl -s -k --location --request GET "https://$apstraserver/api/blueprints/" \
+    --header "AUTHTOKEN: $authtoken" --header "Content-Type: application/json" \
+    | jq -r '.items[].label' | tr '\n' ';' `
+  
+  MENU_OPTIONS=
+  COUNT=0
+  PS3="Please enter your choice (q to quit): "
+  while IFS=';' read -ra BLUEPRINTS <<< "$bp_label_list"; do
+    select target in "${BLUEPRINTS[@]}" "quit"; do
+      case "$target" in 
+        "quit")
+          echo "Exited"
+          break
+          ;;
+        *)
+          bp_label="$target"
+          bpid=`curl -s -k --location --request GET "https://$apstraserver/api/blueprints" \
+            --header "AUTHTOKEN: $authtoken" --data-raw "" | \
+            jq -r '.items[] | select(.label == '\""$bp_label"\"') | .id' `
+          echo "ID for $bp_label is $bpid"
+          break
+          ;;
+      esac
+    done
+    break
+  done
 }
 
+
 getswitchinfo() {
+  if [ $bpid = "" ]; then
+    get_bp_id
+  fi
+
   declare -A switches `curl -s -k --location --request POST "https://$apstraserver/api/blueprints/$bpid/qe?type=staging" \
   --header "AUTHTOKEN: $authtoken" --header "Content-Type: application/json" --data-raw "{ \"query\": \"match(node('system', name='system', role=is_in(['leaf', 'access', 'spine', 'superspine'])))\"}" | jq -r '.items[].system | "switches" + "[" + .label + "]" + "=" + .system_id' |tr '\n' ' '`
 
   MENU_OPTIONS=
   COUNT=0
 
-  PS3="Please enter your choice (q to quit): "
+  PS3="Please select a blueprint from the list above (q to quit): "
   select target in "${!switches[@]}" "quit";
   do
     case "$target" in
@@ -184,6 +200,7 @@ getswitchinfo() {
     esac
   done
 }
+
 
 prompt_missing_opts() {
   if [ -z $apstraserver ]; then
@@ -204,7 +221,12 @@ rampcpu() {
   sshpass -proot123 ssh -o StrictHostKeyChecking=no root@$switch_ip 'dd if=/dev/zero of=/dev/null & ; dd if=/dev/random of=/dev/null & ; dd if=/dev/urandom of=/dev/null &'
 }
 
+
 rebootall() {
+  if [ $bpid = "" ]; then
+    get_bp_id
+  fi
+
   declare -A switches `curl -s -k --location --request POST "https://$apstraserver/api/blueprints/$bpid/qe?type=staging" --header "AUTHTOKEN: $authtoken" --header "Content-Type: application/json" --data-raw "{ \"query\": \"match(node('system', name='system', role=is_in(['leaf', 'access', 'spine', 'superspine'])))\"}" | jq -r '.items[].system | "switches" + "[" + .label + "]" + "=" + .system_id' |tr '\n' ' '`
   for dev in "${switches[@]}"; do
     switch_ip=`curl -k --location --request GET "https://$apstraserver/api/systems/$dev" --header "AUTHTOKEN: $authtoken" --data-raw "" | jq -r '.facts .mgmt_ipaddr'`;
@@ -213,12 +235,18 @@ rebootall() {
   done
 }
 
+
 savetv() {
+  if [ $bpid = "" ]; then
+    get_bp_id
+  fi
+
   commitversion=`curl -s -k --location --request GET "https://$apstraserver/api/blueprints/$bpid/deploy" --header "AUTHTOKEN: $authtoken" | jq .version --raw-output`
   echo "version is $commitversion"
   sleep 1
   curl -s -k --location --request POST "https://$apstraserver/api/blueprints/$bpid/revisions/$commitversion/keep" --header "AUTHTOKEN: $authtoken" --header "Content-Type: application/json" --data-raw "{ \"description\": \"Saved by Apstra Chaos Cat at `date` \"}"
 }
+
 
 setstaticrt() {
   getswitchinfo 
