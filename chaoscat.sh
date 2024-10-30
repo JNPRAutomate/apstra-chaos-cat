@@ -172,7 +172,7 @@ get_bp_id() {
 
 
 getswitchinfo() {
-  if [ $bpid = "" ]; then
+  if [ -z $bpid ]; then
     get_bp_id
   fi
 
@@ -223,7 +223,7 @@ rampcpu() {
 
 
 rebootall() {
-  if [ $bpid = "" ]; then
+  if [ -z $bpid ]; then
     get_bp_id
   fi
 
@@ -237,7 +237,7 @@ rebootall() {
 
 
 savetv() {
-  if [ $bpid = "" ]; then
+  if [ -z $bpid ]; then
     get_bp_id
   fi
 
