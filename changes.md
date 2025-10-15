@@ -1,5 +1,23 @@
-Changes to the original apstra chaos cat (Greg B - 1 October 2024)
+# Changes to the original apstra chaos cat
+## Last updated by Greg B on 28 October 2024
 ------------------------------------------------------------------
+
+## Changes from 28 October 2024
+
+- Added an option to select from multiple blueprints on an Apstra server.
+  Now you can pick, instead of always using the blueprint with the ID
+  `evpn-vex-virtual`.  There is a stand-alone option on the main menu for this,
+  but the function is also called from other functions that rely on there
+  being a selected blueprint (e.g., `Commit Apstra Blueprint`).
+
+- Updated the `Commit Apstra Blueprint` option so that chaoscat retrieves the
+  current blueprint revision number from `/api/blueprints/$bpid`, rather than
+  from `/api/blueprints/$bpid/deploy`.  The latter could sometimes lag the
+  former, leading to cases where the most recent changes to the blueprint
+  wouldn't commit.
+
+## Changes from 1 October 2024
+
 - Line 5:  Changed the value of `ifprefix` from `xe` to `ge` as it seems
   Apstra Cloudlabs is using ge-x/y/z as the default interface naming on
   Junos VM's now.
